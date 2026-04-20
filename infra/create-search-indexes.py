@@ -98,6 +98,7 @@ async def create_knowledge_source(
             search_index_name=index_name,
             source_data_fields=source_data_fields,
             search_fields=[SearchIndexFieldReference(name="snippet")],
+            semantic_configuration_name="semantic-configuration",
         ),
     )
 
@@ -200,14 +201,16 @@ async def main_async() -> int:
         knowledge_source_configs=[
             (
                 "hrdocs",
-                "HR policy documents about employee benefits including health insurance plans "
-                "(PPO, HMO, HDHP), dental and vision coverage, retirement plans (401k), life insurance, "
-                "disability insurance, and benefits enrollment procedures and deadlines.",
+                "HR policy and company documents including the employee handbook, PerksPlus wellness "
+                "reimbursement program, company overview, vacation perks, employee recognition, "
+                "role library (job descriptions), workplace safety, and performance reviews.",
             ),
             (
                 "healthdocs",
-                "Health and wellness program documents including wellness initiatives, "
-                "mental health resources, and employee assistance programs.",
+                "Health insurance plan documents including medical plan details (Northwind Health Plus "
+                "and Northwind Standard), coverage options (PPO, HMO, HDHP), copays, deductibles, "
+                "coinsurance, prescription drug coverage, dental, vision, mental health services, "
+                "workers compensation, and preventive care benefits.",
             ),
         ],
         openai_endpoint=args.openai_endpoint,

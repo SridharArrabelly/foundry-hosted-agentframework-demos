@@ -61,3 +61,29 @@ The `searchToAIServicesRoleAssignment` in `infra/core/search/azure_ai_search.bic
 ## Open questions
 
 Why don't we need to use uvicorn in the Dockerfile? Because the agentserver does that when you call run()
+
+## Hosted agent identity RBAC: find a better approach
+
+**Current workaround:** `infra/hooks/postdeploy.sh` discovers the hosted agent's managed identity
+via `azd ai agent show` and assigns `Search Index Data Contributor` on the search service using `az role assignment create`.
+
+**Why it's gross:** The agent identity (`instance_identity.principal_id`) is created by the Foundry
+hosting platform at deploy time, not during Bicep provisioning. There's no ARM resource type
+for it, so we can't reference it in Bicep. The postdeploy hook runs after every deploy,
+relies on `azd ai agent show` JSON parsing, and uses imperative `az` CLI instead of declarative IaC.
+
+**Ask the Hosted Agents team:**
+1. Can the agent identity principal ID be exposed as a Bicep-accessible output (e.g., on the project or account resource)?
+2. Can the platform auto-assign common roles (like Search Index Data Reader) based on project connections?
+3. Is there a planned ARM resource type for hosted agents that would include the identity?
+
+## Duplicate log lines: `logging.basicConfig` + `enable_instrumentation`
+
+`logging.basicConfig(level=logging.DEBUG)` adds one handler, then `enable_instrumentation()` adds another.
+Every WARNING/INFO line appears twice with different formats.
+
+Using `force=True` on `basicConfig` fixes the duplicates but may remove the instrumentation handler
+needed for App Insights / trace export.
+
+**Ask the MAF team:** What's the recommended pattern for combining `basicConfig` with `enable_instrumentation`?
+Should we skip `basicConfig` entirely when instrumentation is enabled?

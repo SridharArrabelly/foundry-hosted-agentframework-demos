@@ -134,19 +134,6 @@ def main():
 
     credential = DefaultAzureCredential()
 
-    # Log identity info for debugging RBAC issues
-    try:
-        import base64
-        search_token = credential.get_token("https://search.azure.com/.default")
-        # Decode JWT payload (middle segment) to get oid/appid/sub
-        payload = search_token.token.split(".")[1]
-        payload += "=" * (-len(payload) % 4)  # pad base64
-        claims = json.loads(base64.b64decode(payload))
-        logger.info("Search token identity: oid=%s appid=%s sub=%s",
-                     claims.get("oid"), claims.get("appid"), claims.get("sub"))
-    except Exception as e:
-        logger.warning("Could not decode search token: %s", e)
-
     def _add_auth(request: httpx.Request) -> None:
         token = credential.get_token("https://search.azure.com/.default")
         request.headers["Authorization"] = f"Bearer {token.token}"
@@ -187,7 +174,7 @@ def main():
     server.run()
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG, force=True)
     logger.setLevel(logging.INFO)
     # Silence noisy HTTP/telemetry loggers
     #for name in ("azure.core.pipeline", "azure.monitor.opentelemetry", "urllib3", "azure.identity"):

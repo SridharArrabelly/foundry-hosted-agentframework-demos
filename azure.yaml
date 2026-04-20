@@ -38,6 +38,7 @@ hooks:
             run: infra/hooks/postdeploy.ps1
             interactive: true
         posix:
+            name: postdeploy
             kind: sh
             shell: sh
             run: infra/hooks/postdeploy.sh
@@ -48,6 +49,7 @@ hooks:
             run: infra/hooks/postprovision.ps1
             interactive: true
         posix:
+            name: postprovision
             kind: sh
             shell: sh
             run: infra/hooks/postprovision.sh
