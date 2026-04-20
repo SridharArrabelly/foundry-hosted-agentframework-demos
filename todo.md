@@ -60,4 +60,4 @@ The `searchToAIServicesRoleAssignment` in `infra/core/search/azure_ai_search.bic
 
 ## Open questions
 
-Why don't we need to use uvicorn in the Dockerfile?
+Why don't we need to use uvicorn in the Dockerfile? Because the agentserver does that when you call run()

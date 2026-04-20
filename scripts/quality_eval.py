@@ -159,6 +159,7 @@ eval_run = openai_client.evals.runs.create(
             ],
         },
         "target": {
+            # WIP - evals team is working on it - first half of next week
             "type": "azure_ai_agent",
             "name": AGENT_NAME,
             "version": str(agent_version.version),

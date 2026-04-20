@@ -2,13 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-COPY pyproject.toml .
+COPY pyproject.toml uv.lock ./
 
-RUN uv pip install --system --prerelease=allow -r pyproject.toml
+RUN uv sync --locked --no-dev
 
 COPY main.py .
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8088
 

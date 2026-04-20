@@ -7,7 +7,6 @@ Run using:
 azd ai agent run
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -16,11 +15,11 @@ from typing import Annotated
 
 import httpx
 from agent_framework import Agent
-from agent_framework.azure import AzureAIAgentClient
+from agent_framework.foundry import FoundryChatClient
 from agent_framework.observability import enable_instrumentation
-from azure.ai.agentserver.agentframework import FoundryToolsContextProvider, from_agent_framework
-from azure.ai.agentserver.agentframework.persistence import InMemoryAgentSessionRepository
-from azure.identity.aio import DefaultAzureCredential
+from agent_framework_foundry_hosting import ResponsesHostServer
+from azure.ai.agentserver.responses import InMemoryResponseProvider
+from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from pydantic import Field
 
@@ -57,7 +56,7 @@ class KnowledgeBaseMCPTool:
     See: https://github.com/Azure/azure-search/issues/XXXX
     """
 
-    def __init__(self, http_client: httpx.AsyncClient, mcp_url: str) -> None:
+    def __init__(self, http_client: httpx.Client, mcp_url: str) -> None:
         self._http_client = http_client
         self._mcp_url = mcp_url
         self._headers = {
@@ -66,11 +65,11 @@ class KnowledgeBaseMCPTool:
         }
         self._initialized = False
 
-    async def _ensure_initialized(self) -> None:
+    def _ensure_initialized(self) -> None:
         """Perform MCP handshake if not already done."""
         if self._initialized:
             return
-        await self._http_client.post(
+        self._http_client.post(
             self._mcp_url,
             json={"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
                 "protocolVersion": "2025-11-25",
@@ -79,14 +78,14 @@ class KnowledgeBaseMCPTool:
             }},
             headers=self._headers,
         )
-        await self._http_client.post(
+        self._http_client.post(
             self._mcp_url,
             json={"jsonrpc": "2.0", "method": "notifications/initialized"},
             headers=self._headers,
         )
         self._initialized = True
 
-    async def retrieve(
+    def retrieve(
         self,
         queries: Annotated[list[str], Field(
             description="1 to 4 concise search queries (max ~12 words each). "
@@ -99,9 +98,9 @@ class KnowledgeBaseMCPTool:
 
         Use this tool to find information from internal company documents before answering HR-related questions.
         """
-        await self._ensure_initialized()
+        self._ensure_initialized()
         logger.info("KB MCP retrieve: %s", queries)
-        response = await self._http_client.post(
+        response = self._http_client.post(
             self._mcp_url,
             json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
                 "name": "knowledge_base_retrieve",
@@ -126,7 +125,7 @@ class KnowledgeBaseMCPTool:
         return "No results found."
 
 
-async def main():
+def main():
     """Main function to run the agent as a web server."""
     mcp_url = (
         f"{SEARCH_SERVICE_ENDPOINT}/knowledgebases/{KNOWLEDGE_BASE_NAME}"
@@ -134,49 +133,54 @@ async def main():
     )
     logger.info("Using KB MCP tool at %s", mcp_url)
 
-    async with DefaultAzureCredential() as credential:
+    credential = DefaultAzureCredential()
 
-        async def _add_auth(request: httpx.Request) -> None:
-            token = await credential.get_token("https://search.azure.com/.default")
-            request.headers["Authorization"] = f"Bearer {token.token}"
+    def _add_auth(request: httpx.Request) -> None:
+        token = credential.get_token("https://search.azure.com/.default")
+        request.headers["Authorization"] = f"Bearer {token.token}"
 
-        async with httpx.AsyncClient(
-            event_hooks={"request": [_add_auth]},
-            timeout=httpx.Timeout(30.0, read=300.0),
-        ) as http_client:
-            kb_tool = KnowledgeBaseMCPTool(http_client, mcp_url)
+    http_client = httpx.Client(
+        event_hooks={"request": [_add_auth]},
+        timeout=httpx.Timeout(30.0, read=300.0),
+    )
+    kb_tool = KnowledgeBaseMCPTool(http_client, mcp_url)
 
-            agent = Agent(
-                client=AzureAIAgentClient(
-                    project_endpoint=PROJECT_ENDPOINT,
-                    model_deployment_name=MODEL_DEPLOYMENT_NAME,
-                    credential=credential,
-                ),
-                name="InternalHRHelper",
-                instructions="""You are an internal HR helper focused on employee benefits and company information.
-                Use the knowledge base tool to answer questions and ground all answers in provided context.
-                You can use web search to look up current information when the knowledge base does not have the answer.
-                You can use these tools if the user needs information on benefits deadlines: get_enrollment_deadline_info, get_current_date.
-                If you cannot answer a question, explain that you do not have available information to fully answer the question.""",
-                tools=[kb_tool.retrieve, get_enrollment_deadline_info, get_current_date],
-                context_providers=[
-                    FoundryToolsContextProvider(
-                        tools=[{"type": "web_search_preview"}, {"type": "code_interpreter"}],
-                    ),
-                ],
-            )
-            logger.info("Internal HR Helper Server running on http://localhost:8088")
-            logger.info('Try: azd ai agent invoke --local "What PerksPlus benefits are there, and when do I need to enroll by?"')
-            server = from_agent_framework(agent, session_repository=InMemoryAgentSessionRepository())
-            await server.run_async()
+    client = FoundryChatClient(
+        project_endpoint=PROJECT_ENDPOINT,
+        model=MODEL_DEPLOYMENT_NAME,
+        credential=credential,
+    )
+
+    agent = Agent(
+        client=client,
+        name="InternalHRHelper",
+        instructions="""You are an internal HR helper focused on employee benefits and company information.
+        Use the knowledge base tool to answer questions and ground all answers in provided context.
+        You can use web search to look up current information when the knowledge base does not have the answer.
+        You can use these tools if the user needs information on benefits deadlines: get_enrollment_deadline_info, get_current_date.
+        If you cannot answer a question, explain that you do not have available information to fully answer the question.""",
+        tools=[
+            kb_tool.retrieve,
+            get_enrollment_deadline_info,
+            get_current_date,
+            client.get_web_search_tool(),
+            client.get_code_interpreter_tool(),
+        ],
+        default_options={"store": False},
+    )
+
+    server = ResponsesHostServer(agent, store=InMemoryResponseProvider())
+    logger.info("Internal HR Helper Server running on http://localhost:8088")
+    logger.info('Try: azd ai agent invoke --local "What PerksPlus benefits are there, and when do I need to enroll by?"')
+    server.run()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     logger.setLevel(logging.INFO)
     # Silence noisy HTTP/telemetry loggers
-    for name in ("azure.core.pipeline", "azure.monitor.opentelemetry", "urllib3", "azure.identity"):
-        logging.getLogger(name).setLevel(logging.WARNING)
+    #for name in ("azure.core.pipeline", "azure.monitor.opentelemetry", "urllib3", "azure.identity"):
+    #    logging.getLogger(name).setLevel(logging.WARNING)
 
     enable_instrumentation(enable_sensitive_data=True)
 
-    asyncio.run(main())
+    main()

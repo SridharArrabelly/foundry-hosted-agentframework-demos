@@ -14,8 +14,8 @@ services:
         config:
             container:
                 resources:
-                    cpu: "0.25"
-                    memory: 0.5Gi
+                    cpu: "1"
+                    memory: 2Gi
                 scale:
                     maxReplicas: 1
             deployments:
@@ -39,6 +39,7 @@ hooks:
             interactive: true
         posix:
             name: postprovision
+            kind: sh
             shell: sh
             run: infra/hooks/postprovision.sh
             interactive: true
