@@ -86,6 +86,26 @@ server = ResponsesHostServer(agent, configure_observability=None)
 Note: this also disables the agentserver's OTel tracing/metrics setup, so only do this
 if you're configuring observability yourself.
 
+## Dependency management
+
+`pyproject.toml` and `uv.lock` exist in both the repo root and `workflows/`. Each
+service has its own Docker build context, so both copies are needed. When you add or
+update dependencies, copy the files to keep them in sync:
+
+```bash
+cp pyproject.toml workflows/pyproject.toml
+cp uv.lock workflows/uv.lock
+```
+
+## Testing hooks
+
+To re-run azd hooks without a full deploy:
+
+```bash
+azd hooks run postprovision
+azd hooks run postdeploy
+```
+
 ## Filing bugs
 
 This is where to search and file bugs for the technologies used in this repository:

@@ -7,18 +7,6 @@ Three agents in a chain:
 The writer creates a slogan, the legal reviewer checks it, and the formatter
 styles it for terminal output. Each agent only sees the output of the
 previous agent (context_mode="last_agent").
-
-Based on the hosted-agents-vnext sample:
-    samples/python/hosted-agents/agent-framework/responses/05-workflows/
-
-Prerequisites:
-    Same as Stage 1 (Azure OpenAI / Foundry model deployment).
-
-Run locally:
-    python workflow.py
-
-Deploy (replaces main.py as the entrypoint):
-    Update Dockerfile CMD and agent.yaml, then azd deploy.
 """
 
 import os
@@ -65,7 +53,8 @@ def main():
         name="formatter",
         instructions=(
             "You are an excellent content formatter. "
-            "You take the slogan and format it in a cool retro style when printing to a terminal."
+            "You take the slogan and format it in Markdown with bold text and decorative elements. "
+            "Do not use ANSI escape codes or terminal color codes."
         ),
     )
 

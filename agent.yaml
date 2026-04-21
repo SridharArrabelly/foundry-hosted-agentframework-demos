@@ -17,7 +17,3 @@ environment_variables:
       value: zava-company-kb
     - name: CUSTOM_FOUNDRY_AGENT_TOOLBOX_NAME
       value: hr-agent-tools
-    - name: ENABLE_INSTRUMENTATION
-      value: ${ENABLE_INSTRUMENTATION}
-    - name: ENABLE_SENSITIVE_DATA
-      value: ${ENABLE_SENSITIVE_DATA}
