@@ -399,6 +399,7 @@ output dependentResources object = {
   search: {
     serviceName: hasSearchConnection ? azureAiSearch!.outputs.searchServiceName : ''
     connectionName: hasSearchConnection ? azureAiSearch!.outputs.searchConnectionName : ''
+    kbMcpConnectionName: hasSearchConnection ? azureAiSearch!.outputs.kbMcpConnectionName : ''
   }
   storage: {
     accountName: hasStorageConnection ? storage!.outputs.storageAccountName : ''

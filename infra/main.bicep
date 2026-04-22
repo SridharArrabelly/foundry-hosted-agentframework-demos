@@ -165,6 +165,7 @@ output BING_CUSTOM_GROUNDING_CONNECTION_ID string = aiProject.outputs.dependentR
 output AZURE_AI_SEARCH_CONNECTION_NAME string = aiProject.outputs.dependentResources.search.connectionName
 output AZURE_AI_SEARCH_SERVICE_NAME string = aiProject.outputs.dependentResources.search.serviceName
 output AZURE_AI_SEARCH_SERVICE_ENDPOINT string = !empty(aiProject.outputs.dependentResources.search.serviceName) ? 'https://${aiProject.outputs.dependentResources.search.serviceName}.search.windows.net' : ''
+output AZURE_AI_SEARCH_KB_MCP_CONNECTION_NAME string = aiProject.outputs.dependentResources.search.kbMcpConnectionName
 
 // Azure Storage
 output AZURE_STORAGE_CONNECTION_NAME string = aiProject.outputs.dependentResources.storage.connectionName
