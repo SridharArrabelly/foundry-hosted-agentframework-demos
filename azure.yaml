@@ -6,7 +6,7 @@ requiredVersions:
 name: ai-foundry-starter-basic
 services:
     hosted-agentframework-agent:
-        project: .
+        project: ./agents
         host: azure.ai.agent
         language: docker
         docker:
@@ -18,7 +18,7 @@ services:
                     memory: 2Gi
                 scale:
                     maxReplicas: 1
-            startupCommand: python main.py
+            startupCommand: python stage4_foundry_hosted.py
     hosted-agentframework-workflow:
         project: ./workflows
         host: azure.ai.agent
@@ -32,7 +32,7 @@ services:
                     memory: 2Gi
                 scale:
                     maxReplicas: 1
-            startupCommand: python main.py
+            startupCommand: python stage4_foundry_hosted_as_agent.py
 infra:
     provider: bicep
     path: ./infra

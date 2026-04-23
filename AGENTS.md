@@ -88,12 +88,14 @@ if you're configuring observability yourself.
 
 ## Dependency management
 
-`pyproject.toml` and `uv.lock` exist in both the repo root and `workflows/`. Each
-service has its own Docker build context, so both copies are needed. When you add or
+`pyproject.toml` and `uv.lock` exist in the repo root, `agents/`, and `workflows/`. Each
+service has its own Docker build context, so all copies are needed. When you add or
 update dependencies, copy the files to keep them in sync:
 
 ```bash
+cp pyproject.toml agents/pyproject.toml
 cp pyproject.toml workflows/pyproject.toml
+cp uv.lock agents/uv.lock
 cp uv.lock workflows/uv.lock
 ```
 

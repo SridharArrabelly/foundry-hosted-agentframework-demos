@@ -8,7 +8,7 @@ Demonstrates class-based Executors connected with WorkflowBuilder:
 No LLM calls — pure data transformation to illustrate workflow mechanics.
 
 Run:
-    python workflows/simple_workflow.py
+    python workflows/stage1_simple_executors.py
 """
 
 import asyncio

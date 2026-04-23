@@ -1,25 +1,30 @@
 """
-Stage 3: Add Foundry Toolbox — web search, code interpreter, and knowledge base via MCP.
+Stage 2: Add Foundry IQ — ground answers in an enterprise knowledge base
+served by Azure AI Search via its MCP endpoint.
 
-What changes from Stage 2:
-    - Replace the direct KB MCP tool with a Foundry Toolbox that bundles
-      web_search, code_interpreter, and the Foundry IQ knowledge_base_retrieve
-      tool behind a single MCP endpoint.
+Slide-friendly version: uses Agent Framework's built-in
+`MCPStreamableHTTPTool` directly, with `header_provider` for bearer-token
+auth. No custom wrapper needed.
+
+What changes from Stage 1:
+    - Open an `MCPStreamableHTTPTool` pointing at the KB MCP endpoint.
+    - Pass it as one more tool on the Agent.
+    - Update the system prompt to prefer the KB.
 
 Prerequisites (in addition to Stage 1):
-    - A Foundry Toolbox created with web_search, code_interpreter, and KB MCP tools.
-      The azd up process uses "infra/create_toolbox.py" to create the toolbox.
+    AZURE_AI_SEARCH_SERVICE_ENDPOINT=https://<your-search>.search.windows.net
+    AZURE_AI_SEARCH_KNOWLEDGE_BASE_NAME=zava-company-kb
 
 Run:
-    python stage3_foundry_toolbox.py
+    python agents/stage2_foundry_iq.py
 """
 
 import asyncio
 import logging
 import os
 from datetime import date
+from typing import Any
 
-import httpx
 import mcp.types
 from agent_framework import Agent, MCPStreamableHTTPTool, tool
 from agent_framework.openai import OpenAIChatClient
@@ -32,29 +37,7 @@ from rich.markdown import Markdown
 load_dotenv(override=True)
 
 console = Console()
-logger = logging.getLogger("stage3")
-
-@tool
-def get_enrollment_deadline_info() -> dict:
-    """Return enrollment timeline details for health insurance plans."""
-    logger.info("[tool] get_enrollment_deadline_info()")
-    return {
-        "benefits_enrollment_opens": "2026-11-11",
-        "benefits_enrollment_closes": "2026-11-30",
-    }
-
-
-class ToolboxAuth(httpx.Auth):
-    """httpx Auth that injects a fresh bearer token for the Foundry Toolbox MCP endpoint."""
-
-    def __init__(self, token_provider) -> None:
-        self._token_provider = token_provider
-
-    async def async_auth_flow(self, request):
-        """Add Authorization header with a fresh token on every request."""
-        token = await self._token_provider()
-        request.headers["Authorization"] = f"Bearer {token}"
-        yield request
+logger = logging.getLogger("stage2")
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +55,16 @@ for _cls in [mcp.types.ResourceContents, mcp.types.TextResourceContents,
     _cls.model_rebuild(force=True)
 
 
+@tool
+def get_enrollment_deadline_info() -> dict:
+    """Return enrollment timeline details for health insurance plans."""
+    logger.info("[tool] get_enrollment_deadline_info()")
+    return {
+        "benefits_enrollment_opens": "2026-11-11",
+        "benefits_enrollment_closes": "2026-11-30",
+    }
+
+
 async def main():
     credential = DefaultAzureCredential()
 
@@ -80,30 +73,28 @@ async def main():
         credential, "https://cognitiveservices.azure.com/.default"
     )
     client = OpenAIChatClient(
-        base_url=f"{os.environ['AZURE_OPENAI_ENDPOINT']}openai/v1/",
+        base_url=f"{os.environ['AZURE_OPENAI_ENDPOINT']}/openai/v1/",
         api_key=aoai_token_provider,
         model=os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"],
     )
 
-    # --- Foundry Toolbox (web search, code interpreter, knowledge base) via MCP ---
-    toolbox_name = os.environ["CUSTOM_FOUNDRY_AGENT_TOOLBOX_NAME"]
-    project_endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
-    toolbox_endpoint = f"{project_endpoint.rstrip('/')}/toolboxes/{toolbox_name}/mcp?api-version=v1"
-
-    toolbox_token_provider = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
-    toolbox_http_client = httpx.AsyncClient(
-        auth=ToolboxAuth(toolbox_token_provider),
-        headers={"Foundry-Features": "Toolboxes=V1Preview"},
-        timeout=120.0,
-    )
-    toolbox_mcp_tool = MCPStreamableHTTPTool(
-        name="toolbox",
-        url=toolbox_endpoint,
-        http_client=toolbox_http_client,
-        load_prompts=False,
+    # --- Foundry IQ knowledge base via MCP --------------------------------
+    mcp_url = (
+        f"{os.environ['AZURE_AI_SEARCH_SERVICE_ENDPOINT']}"
+        f"/knowledgebases/{os.environ['AZURE_AI_SEARCH_KNOWLEDGE_BASE_NAME']}"
+        f"/mcp?api-version=2025-11-01-Preview"
     )
 
-    async with toolbox_mcp_tool:
+    async def _get_auth_headers(context: dict[str, Any]) -> dict[str, str]:
+        token = await credential.get_token("https://search.azure.com/.default")
+        return {"Authorization": f"Bearer {token.token}"}
+
+    async with MCPStreamableHTTPTool(
+        name="knowledge-base",
+        url=mcp_url,
+        header_provider=_get_auth_headers,
+        allowed_tools=["knowledge_base_retrieve"],
+    ) as kb_mcp_tool:
         agent = Agent(
             client=client,
             instructions=(
@@ -111,19 +102,17 @@ async def main():
                 "Use the knowledge base tool to answer questions about HR policies, benefits, "
                 "and company information, and ground all answers in the retrieved context. "
                 "Use get_enrollment_deadline_info for benefits enrollment timing. "
-                "You can use web search to look up current information when the knowledge base "
-                "does not have the answer. "
                 "If you cannot answer from the tools, say so clearly."
             ),
-            tools=[get_enrollment_deadline_info, toolbox_mcp_tool],
+            tools=[kb_mcp_tool, get_enrollment_deadline_info],
         )
 
-        #response = await agent.run("What is the weather today in Seattle, the Zava HQ?")
-        response = await agent.run("What PerksPlus benefits are available to employees?")
+        response = await agent.run(
+            "What PerksPlus benefits are there, and when do I need to enroll by?"
+        )
         console.print("\n[bold]Agent answer:[/bold]")
         console.print(Markdown(response.text))
 
-    await toolbox_http_client.aclose()
     await credential.close()
 
 
@@ -131,6 +120,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s", handlers=[RichHandler(console=console, show_path=False)])
     logging.getLogger("azure.identity").setLevel(logging.WARNING)
     logging.getLogger("azure.core").setLevel(logging.WARNING)
-    logging.getLogger("mcp").setLevel(logging.DEBUG)
-    logging.getLogger("httpx").setLevel(logging.DEBUG)
     asyncio.run(main())

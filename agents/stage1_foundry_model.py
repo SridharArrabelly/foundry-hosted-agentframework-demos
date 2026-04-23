@@ -12,7 +12,7 @@ Prerequisites:
         AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-5.2
 
 Run:
-    python stage1_foundry_model.py
+    python agents/stage1_foundry_model.py
 """
 
 import asyncio
