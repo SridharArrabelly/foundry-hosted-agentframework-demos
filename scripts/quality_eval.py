@@ -1,6 +1,6 @@
 """Run a quality evaluation against the agent
 
-Demonstrates evaluation failures when queries fall outside the knowledge base's scope.
+Evaluates in-scope knowledge base queries against ground truth answers.
 
 Based on:
 https://learn.microsoft.com/en-us/azure/foundry/observability/how-to/evaluate-agent
@@ -21,6 +21,7 @@ load_dotenv(override=True)
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "hosted-agentframework-agent")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "eval_output")
+DATASET_PATH = os.path.join(os.path.dirname(__file__), "eval_data", "quality_ground_truth.jsonl")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 project_endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"]
@@ -37,32 +38,12 @@ agent_version = agent.versions["latest"]
 print(f"Agent: {agent_version.name}  version: {agent_version.version}")
 
 # ---------------------------------------------------------------------------
-# 2. Create a test dataset (JSONL) and upload it
+# 2. Upload a ground truth test dataset (JSONL)
 # ---------------------------------------------------------------------------
-test_queries = [
-    # Questions the KB can answer (hrdocs/healthdocs about Zava)
-    {"query": "What health plans does Zava offer?"},
-    {"query": "Who is the CEO of Zava?"},
-    {"query": "What is Zava's parental leave policy?"},
-    # Questions clearly outside the KB's scope (should trigger failures)
-    {"query": "What are the best exercises to reduce lower back pain?"},
-    {"query": "How do I file my taxes as a freelancer?"},
-    {"query": "Can you recommend a good therapist in London?"},
-    {"query": "What is the capital of France?"},
-    {"query": "Explain how to set up a Kubernetes cluster."},
-    {"query": "What medications help with seasonal allergies?"},
-    {"query": "Write me a Python script to sort a list."},
-]
-
-dataset_path = os.path.join(OUTPUT_DIR, "test_queries.jsonl")
-with open(dataset_path, "w") as f:
-    for item in test_queries:
-        f.write(json.dumps(item) + "\n")
-
 dataset = project_client.datasets.upload_file(
-    name=f"{AGENT_NAME}-eval-queries",
+    name=f"{AGENT_NAME}-eval-ground-truth",
     version=str(int(time.time())),
-    file_path=dataset_path,
+    file_path=DATASET_PATH,
 )
 print(f"Uploaded dataset: {dataset.id}")
 
@@ -72,8 +53,8 @@ print(f"Uploaded dataset: {dataset.id}")
 testing_criteria = [
     {
         "type": "azure_ai_evaluator",
-        "name": "Task Adherence",
-        "evaluator_name": "builtin.task_adherence",
+        "name": "Tool Call Accuracy",
+        "evaluator_name": "builtin.tool_call_accuracy",
         "data_mapping": {
             "query": "{{item.query}}",
             "response": "{{sample.output_items}}",
@@ -92,8 +73,8 @@ testing_criteria = [
     },
     {
         "type": "azure_ai_evaluator",
-        "name": "Groundedness",
-        "evaluator_name": "builtin.groundedness",
+        "name": "Task Adherence",
+        "evaluator_name": "builtin.task_adherence",
         "data_mapping": {
             "query": "{{item.query}}",
             "response": "{{sample.output_items}}",
@@ -102,14 +83,25 @@ testing_criteria = [
     },
     {
         "type": "azure_ai_evaluator",
-        "name": "Relevance",
-        "evaluator_name": "builtin.relevance",
+        "name": "Response Completeness",
+        "evaluator_name": "builtin.response_completeness",
+        "data_mapping": {
+            "ground_truth": "{{item.ground_truth}}",
+            "response": "{{sample.output_text}}",
+        },
+        "initialization_parameters": {"deployment_name": model_deployment},
+    },
+    # RAG specific:
+    {
+        "type": "azure_ai_evaluator",
+        "name": "Groundedness",
+        "evaluator_name": "builtin.groundedness",
         "data_mapping": {
             "query": "{{item.query}}",
             "response": "{{sample.output_items}}",
         },
         "initialization_parameters": {"deployment_name": model_deployment},
-    },
+    }
 ]
 
 # ---------------------------------------------------------------------------
@@ -123,8 +115,9 @@ data_source_config = {
         "type": "object",
         "properties": {
             "query": {"type": "string"},
+            "ground_truth": {"type": "string"},
         },
-        "required": ["query"],
+        "required": ["query", "ground_truth"],
     },
     "include_sample_schema": True,
 }

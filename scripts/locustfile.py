@@ -13,7 +13,7 @@ import time
 from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
-from locust import HttpUser, between, events, tag, task
+from locust import HttpUser, between, events, task
 
 load_dotenv(override=True)
 
@@ -96,10 +96,9 @@ class HostedAgentUser(HttpUser):
     wait_time = between(1, 3)
     host = PROJECT_ENDPOINT
 
-    @tag("single")
-    @task(weight=7)
+    @task
     def single_turn(self):
-        """Send a single random query."""
+        """Send a single random query using responses.create."""
         query, category = random.choice(ALL_QUERIES)
 
         start_time = time.perf_counter()
@@ -124,50 +123,3 @@ class HostedAgentUser(HttpUser):
             exception=exception,
             context={},
         )
-
-    @tag("multi")
-    @task(weight=3)
-    def multi_turn_conversation(self):
-        """Simulate a 2-3 turn conversation."""
-        turns = random.sample(ALL_QUERIES, k=min(random.randint(2, 3), len(ALL_QUERIES)))
-
-        try:
-            conversation = _openai_client.conversations.create()
-        except Exception as e:  # noqa: BLE001
-            events.request.fire(
-                request_type="foundry_agent",
-                name="multi_turn/create",
-                response_time=0,
-                response_length=0,
-                exception=e,
-                context={},
-            )
-            return
-
-        for i, (query, category) in enumerate(turns):
-            start_time = time.perf_counter()
-            exception = None
-            response_length = 0
-
-            try:
-                response = _openai_client.responses.create(
-                    conversation=conversation.id,
-                    input=query,
-                )
-                response_length = len(response.output_text)
-            except Exception as e:
-                exception = e
-
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
-
-            events.request.fire(
-                request_type="foundry_agent",
-                name=f"multi_turn/{category}/turn_{i + 1}",
-                response_time=elapsed_ms,
-                response_length=response_length,
-                exception=exception,
-                context={},
-            )
-
-            if exception:
-                break

@@ -116,6 +116,28 @@ This is where to search and file bugs for the technologies used in this reposito
 * azd: github.com/Azure/azure-dev
 * Agentserver wrapper SDK (part of Azure Python SDK): github.com/azure/azure-sdk-for-python
 
+## Troubleshooting
+
+If a continuous evaluation run fails with "No trace data found", verify that the
+time window contains trace spans with nonempty `gen_ai.input.messages` and
+`gen_ai.output.messages`. Continuous evaluation needs those fields to build the
+evaluation dataset; request rows without message-bearing spans are not enough.
+
+```kusto
+dependencies
+| where timestamp > ago(1h)
+| extend dims = parse_json(tostring(customDimensions))
+| extend agentId = tostring(dims["gen_ai.agent.id"]),
+                 inputMessages = tostring(dims["gen_ai.input.messages"]),
+                 outputMessages = tostring(dims["gen_ai.output.messages"])
+| summarize
+        totalRows = count(),
+        rowsWithBothMessages = countif(inputMessages !in ("", "[]") and outputMessages !in ("", "[]")),
+        latest = max(timestamp)
+    by agentId
+| order by rowsWithBothMessages desc
+```
+
 ## Relevant documentation
 
 MAF Observability
